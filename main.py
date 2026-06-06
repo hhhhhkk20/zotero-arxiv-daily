@@ -2,6 +2,7 @@ import arxiv
 import argparse
 import os
 import sys
+import time
 from dotenv import load_dotenv
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -57,9 +58,19 @@ def get_arxiv_paper(query:str, debug:bool=False) -> list[ArxivPaper]:
         bar = tqdm(total=len(all_paper_ids),desc="Retrieving Arxiv papers")
         for i in range(0,len(all_paper_ids),50):
             search = arxiv.Search(id_list=all_paper_ids[i:i+50])
-            batch = [ArxivPaper(p) for p in client.results(search)]
+            for attempt in range(5):
+                try:
+                    batch = [ArxivPaper(p) for p in client.results(search)]
+                    break
+                except arxiv.ArxivError as e:
+                    if attempt == 4:
+                        raise
+                    wait = min(120, 20 * (2 ** attempt))
+                    logger.warning(f"Failed to retrieve arxiv batch (attempt {attempt + 1}/5): {e}. Retrying in {wait}s.")
+                    time.sleep(wait)
             bar.update(len(batch))
             papers.extend(batch)
+            time.sleep(3)
         bar.close()
 
     else:
